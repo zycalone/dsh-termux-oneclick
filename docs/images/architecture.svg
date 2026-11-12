@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 520" width="1040" height="520" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .box{fill:#ffffff;stroke:#d0d7de;stroke-width:1.5;rx:10}
+      .grp{fill:#f6f8fa;stroke:#d0d7de;stroke-width:1.5;rx:14}
+      .t{font-size:15px;fill:#1f2328;font-weight:600}
+      .s{font-size:12.5px;fill:#57606a}
+      .lbl{font-size:12px;fill:#57606a}
+      .acc{fill:#0969da}
+      .wire{stroke:#57606a;stroke-width:1.5;fill:none}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1040" height="520" fill="#ffffff"/>
+
+  <!-- 手机框 -->
+  <rect x="16" y="16" width="700" height="488" rx="16" fill="#f6f8fa" stroke="#d0d7de" stroke-width="2"/>
+  <text x="36" y="46" class="t">安卓手机 · Termux · 免 root</text>
+  <text x="36" y="66" class="s">模型端点自备（OpenAI 兼容 /v1/chat/completions）</text>
+
+  <!-- dsh 核心 -->
+  <rect class="box" x="48" y="86" width="300" height="86" rx="10"/>
+  <text x="66" y="112" class="t">dsh 核心</text>
+  <text x="66" y="134" class="s">web 界面 + headless CLI</text>
+  <text x="66" y="153" class="s">node --expose-internals · 模型手写声明</text>
+
+  <!-- 能力脚本层 -->
+  <rect class="box" x="48" y="200" width="300" height="128" rx="10"/>
+  <text x="66" y="226" class="t">能力脚本</text>
+  <text x="66" y="248" class="s">appctl.sh · quiz.py</text>
+  <text x="66" y="267" class="s">screenwatch.py · vidnote.py</text>
+  <text x="66" y="286" class="s">see_screen.py · ask.sh</text>
+  <text x="66" y="308" class="s">python-pptx / docx / openpyxl / reportlab</text>
+
+  <!-- 手机系统层 -->
+  <rect class="box" x="48" y="356" width="300" height="106" rx="10"/>
+  <text x="66" y="382" class="t">手机系统</text>
+  <text x="66" y="404" class="s">本机 adb 127.0.0.1:5556</text>
+  <text x="66" y="423" class="s">uiautomator · input · screencap</text>
+  <text x="66" y="442" class="s">ffmpeg 抽帧 · 文件系统</text>
+
+  <!-- 右侧：外部 -->
+  <rect class="box" x="392" y="86" width="296" height="86" rx="10"/>
+  <text x="410" y="112" class="t">模型端点（自备）</text>
+  <text x="410" y="134" class="s">文本模型 + 视觉模型</text>
+  <text x="410" y="153" class="s">视觉必须声明 input: [text, image]</text>
+
+  <rect class="box" x="392" y="200" width="296" height="80" rx="10"/>
+  <text x="410" y="226" class="t">上网 / 论文</text>
+  <text x="410" y="248" class="s">web_fetch · Bing · arXiv · Crossref</text>
+
+  <rect class="box" x="392" y="308" width="296" height="80" rx="10"/>
+  <text x="410" y="334" class="t">其它 App</text>
+  <text x="410" y="356" class="s">学习通 / 浏览器 / 相册 …</text>
+
+  <rect class="box" x="392" y="416" width="296" height="64" rx="10"/>
+  <text x="410" y="442" class="t">产物</text>
+  <text x="410" y="464" class="s">笔记 md · PPTX / DOCX / XLSX / PDF</text>
+
+  <!-- 连线 -->
+  <path class="wire" d="M198 172 V 200" marker-end="url(#a)"/>
+  <path class="wire" d="M198 328 V 356" marker-end="url(#a)"/>
+  <path class="wire" d="M348 129 H 392" marker-end="url(#a)"/>
+  <path class="wire" d="M348 240 H 392" marker-end="url(#a)"/>
+  <path class="wire" d="M348 348 H 392" marker-end="url(#a)"/>
+  <path class="wire" d="M348 409 V 448 H 392" marker-end="url(#a)"/>
+
+  <!-- 图例 -->
+  <text x="16" y="512" class="lbl">工作方式：截屏 / 抽帧 → 视觉模型抄画面文字 → 文本模型汇总；操作 App 走本机 adb，不需要电脑。</text>
+</svg>
