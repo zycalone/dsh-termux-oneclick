@@ -1,14 +1,34 @@
 # dsh-termux-oneclick
 
-把一台**安卓手机**（Termux，**不需要 root**、不需要电脑常开）变成能干活的 Agent：
-识图答题、操作手机里的其它 App、上网查资料写论文、做章节测验、看视频出笔记、生成 PPT/Word/Excel/PDF。
+![license](https://img.shields.io/badge/license-MIT-3fb950)
+![platform](https://img.shields.io/badge/Android-Termux%20%C2%B7%20%E5%85%8D%20root-3fb950)
+![node](https://img.shields.io/badge/Node-%E2%89%A520-339933)
+![python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776ab)
+![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-10%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
+![status](https://img.shields.io/badge/%E5%AE%9E%E6%B5%8B-%E7%9C%9F%E6%9C%BA%E8%B7%91%E9%80%9A-8250df)
 
-本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录。
+**一句话**：把一台安卓手机变成能自己干活的 AI —— 不用 root、不用电脑常开、电脑关机照样用。
+
+把 dsh（DeepSeek Harness）原封不动装进 Termux，再让它通过**本机 adb 自己控制自己**：
+读屏幕、按文字点按钮、截图复核、抽帧看视频。
+
+本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：44 个文件、2974 行、10 篇中文文档。
 
 > ⚠️ 本仓库**不含任何模型代理/逆向实现**。你需要自备一个 OpenAI 兼容的 `/v1/chat/completions` 端点
 > （本机 `127.0.0.1:8787`、局域网、或任何云端兼容服务都行），填进配置即可。
 
 ![架构](docs/images/architecture.svg)
+
+---
+
+## 目录
+
+- [真实运行输出](#真实运行输出实测节选) · [能力一览](#能力一览) · [硬性前提](#硬性前提) · [目录结构](#目录结构)
+- [快速开始（5 步）](#快速开始5-步) · [模型接入](#模型接入自备端点) · [手机自我接管](#手机自我接管不需要电脑)
+- [常用命令速查](#常用命令速查) · [联网与文档能力](#联网与文档能力) · [实测状态](#实测状态诚实清单) · [安全与免责](#安全与免责)
+
+> 想发动态/分享？[`docs/images/share-card.png`](docs/images/share-card.png) 是配好版式的宣传图，
+> [`docs/images/architecture.png`](docs/images/architecture.png) 是架构图的位图版本。
 
 ---
 
@@ -95,7 +115,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 │   ├── 08-能力清单与实测.md
 │   ├── 09-常见问题.md
 │   ├── 10-AGENTS配置.md
-│   └── images/architecture.svg  # 架构图
+│   └── images/                  # architecture.svg / .png、share-card.png
 ├── config/
 │   ├── cordis.patch.yml        # dsh 在安卓上必须的配置补丁
 │   ├── dshx.sh                 # dsh 启动包装器（必须带 --expose-internals）
