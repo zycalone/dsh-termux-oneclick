@@ -1,0 +1,36 @@
+# 密钥与个人数据——绝不要提交
+.env
+*.env
+!.env.example
+*cookies*
+*session*.json
+*.token
+*token*.txt
+*credentials*
+id_rsa*
+*_ed25519*
+*.pem
+*.key
+
+# 运行时产物
+tmp/
+~/
+*.log
+*.jsonl
+__pycache__/
+*.pyc
+*.png
+*.jpg
+*.mp4
+shots/
+
+# 大文件 / 平台二进制
+*.tgz
+*.apk
+*.exe
+platform-tools/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+desktop.ini

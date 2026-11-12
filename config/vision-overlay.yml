@@ -1,0 +1,5 @@
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: openai
+    model: glm-5v-turbo
