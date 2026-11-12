@@ -4,7 +4,7 @@
 ![platform](https://img.shields.io/badge/Android-Termux%20%C2%B7%20%E5%85%8D%20root-3fb950)
 ![node](https://img.shields.io/badge/Node-%E2%89%A520-339933)
 ![python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776ab)
-![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-11%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
+![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-12%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
 ![status](https://img.shields.io/badge/%E5%AE%9E%E6%B5%8B-%E7%9C%9F%E6%9C%BA%E8%B7%91%E9%80%9A-8250df)
 
 **一句话**：把一台安卓手机变成能自己干活的 AI —— 不用 root、不用电脑常开、电脑关机照样用。
@@ -12,7 +12,7 @@
 把 dsh（DeepSeek Harness）原封不动装进 Termux，再让它通过**本机 adb 自己控制自己**：
 读屏幕、按文字点按钮、截图复核、抽帧看视频。
 
-本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：46 个文件、3300+ 行、11 篇中文文档。
+本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：50 个文件、3700+ 行、12 篇中文文档。
 
 > ⚠️ 本仓库**不含任何模型代理/逆向实现**。你需要自备一个 OpenAI 兼容的 `/v1/chat/completions` 端点
 > （本机 `127.0.0.1:8787`、局域网、或任何云端兼容服务都行），填进配置即可。
@@ -25,7 +25,7 @@
 
 - [真实运行输出](#真实运行输出实测节选) · [能力一览](#能力一览) · [硬性前提](#硬性前提) · [目录结构](#目录结构)
 - [快速开始（5 步）](#快速开始5-步) · [模型接入](#模型接入自备端点) · [手机自我接管](#手机自我接管不需要电脑)
-- [动作编排与自愈](docs/11-动作编排与自愈.md) · [常用命令速查](#常用命令速查) · [联网与文档能力](#联网与文档能力)
+- [动作编排与自愈](docs/11-动作编排与自愈.md) · [回退链与反思](docs/12-回退链与反思循环.md) · [常用命令速查](#常用命令速查)
 - [实测状态](#实测状态诚实清单) · [相关项目](#相关项目本项目不是首创) · [安全与免责](#安全与免责)
 
 > 想发动态/分享？[`docs/images/share-card.png`](docs/images/share-card.png) 是配好版式的宣传图，
@@ -83,6 +83,8 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 | 识图 / 看图答题 | 视觉模型 + `read_image` | — | [docs/04](docs/04-识图.md) |
 | 操作手机上的其它 App | 本机 adb + uiautomator | `appctl.sh` | [docs/03](docs/03-操作其它App.md) |
 | 动作编排与自愈（点得稳） | 可点元素瘦身 + 界面对比重试 + 元素知识库 | `appctl.sh` / `act_batch.py` | [docs/11](docs/11-动作编排与自愈.md) |
+| 多端点回退链（抗挂） | 端点×模型排队试，错一个换下一个 | `llm.py` | [docs/12](docs/12-回退链与反思循环.md) |
+| 操作反思循环 | 点了没反应 → 截图问视觉模型为什么 | `smartstep.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 章节测验/在线答题（高正确率） | 多模型投票 + 检索兜底 | `quiz.py` | [docs/05](docs/05-满分答题流水线.md) |
 | 看视频出笔记 | 截屏抽帧 + 视觉模型读画面 | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
 | 上网查资料 / 写论文 | `web_fetch` 抓 Bing / arXiv / Crossref / PubMed | — | README「联网」 |
@@ -118,6 +120,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 │   ├── 09-常见问题.md
 │   ├── 10-AGENTS配置.md
 │   ├── 11-动作编排与自愈.md
+│   ├── 12-回退链与反思循环.md
 │   └── images/                  # architecture.svg / .png、share-card.png
 ├── config/
 │   ├── cordis.patch.yml        # dsh 在安卓上必须的配置补丁
@@ -195,6 +198,25 @@ export OPENAI_API_KEY=你的key        # dshx.sh 里默认写的是 local-noop
 3. **模型 ID 必须手写**：很多兼容端点的 `/v1/models` 返回格式与 dsh 期望的不一致，自动拉取会是空的。
 4. 视觉模型不声明 `input: [text, image]`，图片会被**静默丢弃**，模型只看到占位符——这是"为什么它说看不见图"的根因。
 
+### 多端点回退（可选，但强烈建议）
+
+dsh 本体只吃一个端点；脚本层走的是 `llm.py`，可以配一整条链，挂一个自动换下一个：
+
+```bash
+cat > ~/dsh-phone/endpoints.json <<'JSON'
+{"timeout": 90, "retries_per_endpoint": 2,
+ "endpoints": [
+  {"name":"local","base":"http://127.0.0.1:8787/v1/chat/completions","key":"local-noop",
+   "models":["deepseek-v4-pro"],"vision_models":["glm-5v-turbo"]},
+  {"name":"cloud","base":"https://api.example.com/v1/chat/completions","key":"sk-xxx",
+   "models":["gpt-4o-mini"],"vision_models":["gpt-4o"]}
+ ]}
+JSON
+python ~/dsh-phone/llm.py --ping        # 逐个探活，看谁通
+```
+
+细节与实测：[docs/12-回退链与反思循环.md](docs/12-回退链与反思循环.md)
+
 ---
 
 ## 手机自我接管（不需要电脑）
@@ -226,6 +248,8 @@ bash ~/dsh-phone/appctl.sh text --click          # 只给可点元素，省 toke
 bash ~/dsh-phone/appctl.sh tap-text "登录" --verify     # 点完自检，没变化自动重试
 bash ~/dsh-phone/appctl.sh wait-text "首页" 15   # 等元素出现，别用 sleep 赌
 bash ~/dsh-phone/appctl.sh kb save 微信首页      # 控件知识库：摸过的界面存下来
+python ~/dsh-phone/llm.py --ping                 # 探活：所有模型端点谁通谁挂
+python ~/dsh-phone/smartstep.py --goal "打开设置" --dry-run    # 带反思的自动操作（先干跑）
 python ~/dsh-phone/act_batch.py steps.json --dry-run     # 多步动作，先干跑再真跑
 
 python ~/dsh-phone/quiz.py solve ~/tmp/q.json    # 多模型投票答题
@@ -254,7 +278,10 @@ bash ~/dsh-phone/fix-adb.sh                      # 手机重启后修 adb
 | 点击自愈（`--verify`） | ✅ 实测：界面无变化会重试并最终 `GIVE_UP` |
 | 控件知识库（`kb`） | ✅ 实测：save/list/get 往返正常 |
 | 多步批量（`act_batch.py`） | ✅ 实测：6 步干跑全解析 |
-| 真"反思"（看截图自查错在哪） | ❌ 没做，目前只是机械重试 |
+| 多端点回退链 | ✅ 实测：前两个端点写坏，自动跳到第三个 1591ms |
+| 敏感词拦截（支付/验证码等） | ✅ 实测：`确认支付` 被拦、`设置` 放行 |
+| 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
+| 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
 | 音视频理解 | ❌ 无音视频模型，只能抽帧读画面 |
 | docx/pptx → pdf | ❌ 手机无 LibreOffice |
 | `/tmp` 写入 | ❌ Termux 下不可写，用 `~/tmp` |
