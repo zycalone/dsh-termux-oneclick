@@ -4,7 +4,7 @@
 ![platform](https://img.shields.io/badge/Android-Termux%20%C2%B7%20%E5%85%8D%20root-3fb950)
 ![node](https://img.shields.io/badge/Node-%E2%89%A520-339933)
 ![python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776ab)
-![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-14%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
+![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-15%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
 ![status](https://img.shields.io/badge/%E5%AE%9E%E6%B5%8B-%E7%9C%9F%E6%9C%BA%E8%B7%91%E9%80%9A-8250df)
 
 **一句话**：把一台安卓手机变成能自己干活的 AI —— 不用 root、不用电脑常开、电脑关机照样用。
@@ -12,7 +12,7 @@
 把 dsh（DeepSeek Harness）原封不动装进 Termux，再让它通过**本机 adb 自己控制自己**：
 读屏幕、按文字点按钮、截图复核、抽帧看视频。
 
-本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：61 个文件、4600+ 行、14 篇中文文档。
+本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：65 个文件、6000+ 行、15 篇中文文档。
 
 > ⚠️ 本仓库**不含任何模型代理/逆向实现**。你需要自备一个 OpenAI 兼容的 `/v1/chat/completions` 端点
 > （本机 `127.0.0.1:8787`、局域网、或任何云端兼容服务都行），填进配置即可。
@@ -91,6 +91,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 | 看视频出笔记 | 截屏抽帧 + 视觉模型读画面；**也可直接给链接**（yt-dlp 下载） | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
 | 开会自动做纪要 | 后台定时截屏·内容不变不读图·退出时归纳 | `meetnote.py` | [docs/13](docs/13-开会自动做纪要.md) |
 | 转写稿→纪要/笔记 | 分段提取再合并，会议要要点、讲座要知识点 | `minutetool.py` | [docs/14](docs/14-转写稿变笔记.md) |
+| 桌面一键启动 | Termux:Widget 图标 + 分享链接自动处理 + `m` 菜单兜底 | `.shortcuts/` / `menu.sh` | [docs/15](docs/15-桌面一键启动.md) |
 | 上网查资料 / 写论文 | `web_fetch` 抓 Bing / arXiv / Crossref / PubMed | — | README「联网」 |
 | 生成文档 | python-pptx / python-docx / openpyxl / reportlab | — | README「文档」 |
 | 手机自我接管（ADB/SSH） | adb tcpip + sshd | `fix-adb.sh` | [docs/02](docs/02-接管手机-ADB与SSH.md) |
@@ -263,6 +264,7 @@ python ~/dsh-phone/meetnote.py --interval 20                    # 开会记纪�
 python ~/dsh-phone/meetnote.py --a11y --interval 8               # 只读无障碍树的文字，不截图、不花视觉 token
 python ~/dsh-phone/minutetool.py 稿子.txt --kind lecture         # 转写稿→学习笔记（--kind meeting 出纪要）
 python ~/dsh-phone/vidnote.py "<视频链接>" --max 12 --kind lecture  # 链接解析→下载→抽帧→笔记
+# 桌面图标弄好之后就不用敲上面这些了：点「开会记纪要」「解析手机上最新视频」即可
 bash ~/dsh-phone/fix-adb.sh                      # 拔线/重启后自动找回 adb 通道（端口不写死）
 bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 ```
@@ -294,6 +296,7 @@ bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 | 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
 | vidnote/screenwatch 接回退链 | ✅ 真机实测：抓 2 帧→逐帧识图→汇总出笔记 |
 | vidnote 给链接直接出笔记 | ✅ 真机实测：yt-dlp 下载 59.7MB → 抽 4 帧 → 生成笔记 |
+| 桌面一键启动 | ✅ Termux:Widget 0.15 装好、6 个脚本就位；⚠️ 点图标那一下需本人确认 |
 | meetnote 开会记纪要 | ✅ 真机实测：抓 2 屏→时间线→自动纪要；非会议前台 0 帧 0 token |
 | minutetool 转写稿成稿 | ✅ 真机实测：SRT/txt 两种输入，讲座/会议/auto 三种模式 |
 | 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
