@@ -250,6 +250,7 @@ bash ~/dsh-phone/appctl.sh tap-text "登录" --verify     # 点完自检，没�
 bash ~/dsh-phone/appctl.sh wait-text "首页" 15   # 等元素出现，别用 sleep 赌
 bash ~/dsh-phone/appctl.sh kb save 微信首页      # 控件知识库：摸过的界面存下来
 python ~/dsh-phone/llm.py --ping                 # 探活：所有模型端点谁通谁挂
+python scripts/pc/test_fallback_offline.py       # 离线验回退逻辑（配 scripts/pc/mock_gw.py）
 python ~/dsh-phone/smartstep.py --goal "打开设置" --dry-run    # 带反思的自动操作（先干跑）
 python ~/dsh-phone/act_batch.py steps.json --dry-run     # 多步动作，先干跑再真跑
 
@@ -282,7 +283,7 @@ bash ~/dsh-phone/fix-adb.sh                      # 手机重启后修 adb
 | 多端点回退链 | ✅ 实测：前两个端点写坏，自动跳到第三个 1591ms |
 | 敏感词拦截（支付/验证码等） | ✅ 实测：`确认支付` 被拦、`设置` 放行 |
 | 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
-| vidnote/screenwatch 接回退链 | ⚠️ 代码已改，真机全流程复测待补（见 docs/12） |
+| vidnote/screenwatch 接回退链 | ✅ 离线假网关 8 项全过；⚠️ 真机全流程待复测 |
 | 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
 | 音视频理解 | ❌ 无音视频模型，只能抽帧读画面 |
 | docx/pptx → pdf | ❌ 手机无 LibreOffice |
