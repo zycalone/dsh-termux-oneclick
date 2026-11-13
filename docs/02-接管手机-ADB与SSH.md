@@ -114,6 +114,19 @@ bash ~/dsh-phone/fix-adb.sh ensure    # 静默模式，只输出端口号（appc
 - **`failed to authenticate` / 手机弹「允许 USB 调试」** → 点允许，勾选一律允许
 - **`devices` 里是 `offline`** → 关掉无线调试再开一次（`fix-adb.sh` 现在会自动清这类残渣）
 
+### 想开机就自动接回来（可选）
+
+装了 [Termux:Boot](https://f-droid.org/packages/com.termux.boot/) 之后：
+
+```bash
+mkdir -p ~/.termux/boot
+cp ~/dsh-phone/boot-fixadb.sh ~/.termux/boot/ && chmod +x ~/.termux/boot/boot-fixadb.sh
+cat ~/dsh-phone/boot-fixadb.log      # 看每次开机有没有接上
+```
+
+它会在开机 25 秒后跑一次 `fix-adb.sh ensure`，把（变过的）端口找出来记住。
+**前提是无线调试还开着** —— 系统要是把它关了，adbd 没在监听，任何脚本都救不回来，只能手动再打开。
+
 ### appctl 已经会自愈
 
 `appctl.sh` 不再写死端口：它先看你上次的端口，连不上就静默调 `fix-adb.sh ensure` 再试，
