@@ -8,17 +8,21 @@
 #   4) 把某个界面摸清后存成「控件知识库」，下次直接查，不用再 dump —— kb save/get
 #   5) 多步动作一次性下发、本地顺序执行 —— act_batch.py steps.json
 export TMPDIR="$HOME/tmp"; mkdir -p "$TMPDIR"
-SER=127.0.0.1:5556
 HERE=$(cd "$(dirname "$0")" && pwd)
+# 端口不写死：无线调试重开一次端口就会变，这里读上次找到的（fix-adb.sh 维护）
+SERFILE="$HOME/.dsh-adb-port"
+SER="127.0.0.1:$(cat "$SERFILE" 2>/dev/null || echo 5556)"
 KB="$HOME/dsh-phone/kb"
 
 ensure() {
-  adb connect "$SER" >/dev/null 2>&1 </dev/null
   st=$(adb -s "$SER" get-state 2>/dev/null </dev/null)
-  if [ "$st" != "device" ]; then
-    echo "ADB_OFFLINE: 需一次 USB 连接执行 adb tcpip 5556（见 docs/02）" >&2
-    exit 1
-  fi
+  [ "$st" = "device" ] && return 0
+  # 自愈：拔线 / 重启 / 无线调试换端口后，自动把当前端口找回来
+  p=$(bash "$HERE/fix-adb.sh" ensure 2>/dev/null </dev/null)
+  if [ -n "$p" ]; then SER="127.0.0.1:$p"; return 0; fi
+  echo "ADB_OFFLINE: 本机 adb 连不上（无线调试多半被关掉了）。" >&2
+  echo "  跑 bash $HERE/fix-adb.sh 看具体结论；docs/02 有说明" >&2
+  exit 1
 }
 
 A() { adb -s "$SER" "$@" </dev/null; }
