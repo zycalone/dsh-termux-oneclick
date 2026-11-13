@@ -73,6 +73,31 @@ def load_conf():
 CONF = load_conf()
 
 
+def _apply_env_overrides(conf):
+    """支持老的 DSH_GW / DSH_KEY / DSH_VISION_MODEL / DSH_TEXT_MODEL 环境变量，
+    覆盖第一个端点，这样以前写在脚本里的习惯用法还能用。"""
+    eps = conf.get("endpoints") or []
+    if not eps:
+        eps = conf["endpoints"] = [dict(DEFAULT["endpoints"][0])]
+    ep = eps[0]
+    gw = os.environ.get("DSH_GW")
+    if gw:
+        ep["base"] = gw
+    key = os.environ.get("DSH_KEY")
+    if key:
+        ep["key"] = key
+    vm = os.environ.get("DSH_VISION_MODEL")
+    if vm:
+        ep["vision_models"] = [vm] + [m for m in ep.get("vision_models", []) if m != vm]
+    tm = os.environ.get("DSH_TEXT_MODEL")
+    if tm:
+        ep["models"] = [tm] + [m for m in ep.get("models", []) if m != tm]
+    return conf
+
+
+CONF = _apply_env_overrides(CONF)
+
+
 def candidates(vision=False, only_model=None, only_endpoint=None):
     """按优先级展开成 [(endpoint_dict, model_name), ...]"""
     out = []
@@ -120,14 +145,50 @@ def _one_call(ep, model, messages, timeout, max_tokens, temperature):
     return text, ms
 
 
+def _mime(path):
+    ext = os.path.splitext(str(path))[1].lower()
+    return {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+            ".gif": "image/gif"}.get(ext, "image/png")
+
+
+def chat(messages, vision=False, model=None, endpoint=None, max_tokens=800, temperature=0.2,
+         trace=True, fallback_any_model=True):
+    """直接吃 messages 列表（需要自己拼图像消息时用这个）。
+
+    fallback_any_model=True：指定模型全挂后，放开模型限制再试一遍 ——
+    端点还活着但模型下线（比如同名模型被换成别的 id）时不至于整条线废掉。
+    """
+    timeout = int(CONF.get("timeout", 90))
+    retries = int(CONF.get("retries_per_endpoint", 2))
+    tried = []
+    rounds = [(model, True)] if model else [(None, True)]
+    if model and fallback_any_model:
+        rounds.append((None, True))
+    for want_model, _ in rounds:
+        for ep, mdl in candidates(vision=vision, only_model=want_model, only_endpoint=endpoint):
+            for attempt in range(1, retries + 1):
+                try:
+                    text, ms = _one_call(ep, mdl, messages, timeout, max_tokens, temperature)
+                    if trace:
+                        print("[llm] %s/%s  %dms" % (ep.get("name", "?"), mdl, ms), file=sys.stderr)
+                    return {"text": text, "endpoint": ep.get("name"), "model": mdl, "ms": ms, "tried": tried}
+                except urllib.error.HTTPError as e:
+                    tried.append("%s/%s HTTP %s" % (ep.get("name"), mdl, e.code))
+                    if e.code in (400, 401, 403, 404):
+                        break
+                except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+                    tried.append("%s/%s %s" % (ep.get("name"), mdl, str(e)[:60]))
+                if attempt < retries:
+                    time.sleep(1.0 * attempt)
+    raise RuntimeError("所有端点都失败了：" + " | ".join(tried or ["没有可用候选"]))
+
+
 def ask(prompt, vision=False, model=None, endpoint=None, max_tokens=800, temperature=0.2,
         image_path=None, image_b64=None, trace=True):
     """走回退链问一句。返回 dict：{text, endpoint, model, ms, tried}
 
     全部挂掉时抛 RuntimeError，里面带着每个候选的失败原因。
     """
-    timeout = int(CONF.get("timeout", 90))
-    retries = int(CONF.get("retries_per_endpoint", 2))
     msgs = [{"role": "user", "content": prompt}]
     if vision or image_path or image_b64:
         b64 = image_b64
@@ -140,28 +201,12 @@ def ask(prompt, vision=False, model=None, endpoint=None, max_tokens=800, tempera
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": "data:image/png;base64," + b64}},
+                    {"type": "image_url", "image_url": {"url": "data:" + _mime(image_path or "x.png") + ";base64," + b64}},
                 ],
             }
         ]
-    tried = []
-    for ep, mdl in candidates(vision=bool(vision or image_path or image_b64),
-                              only_model=model, only_endpoint=endpoint):
-        for attempt in range(1, retries + 1):
-            try:
-                text, ms = _one_call(ep, mdl, msgs, timeout, max_tokens, temperature)
-                if trace:
-                    print("[llm] %s/%s  %dms" % (ep.get("name", "?"), mdl, ms), file=sys.stderr)
-                return {"text": text, "endpoint": ep.get("name"), "model": mdl, "ms": ms, "tried": tried}
-            except urllib.error.HTTPError as e:
-                tried.append("%s/%s HTTP %s" % (ep.get("name"), mdl, e.code))
-                if e.code in (400, 401, 403, 404):
-                    break  # 这类错误重试没用，直接换下一个
-            except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
-                tried.append("%s/%s %s" % (ep.get("name"), mdl, str(e)[:60]))
-            if attempt < retries:
-                time.sleep(1.0 * attempt)
-    raise RuntimeError("所有端点都失败了：" + " | ".join(tried or ["没有可用候选"]))
+    return chat(msgs, vision=bool(vision or image_path or image_b64), model=model,
+                endpoint=endpoint, max_tokens=max_tokens, temperature=temperature, trace=trace)
 
 
 def ping():
