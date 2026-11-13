@@ -19,6 +19,7 @@
 设计原则：宁可标「低」也不硬猜。多选用逐项判定保证"选全"。
 """
 import json
+import os
 import re
 import sys
 import time
@@ -26,11 +27,12 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-BASE = "http://127.0.0.1:8787/v1/chat/completions"
-KEY = "local-noop"
-VOTE_MODELS = ["deepseek-v4-pro", "glm-5.2", "hy3", "minimax-m3", "deepseek-v4-flash"]
-ITEM_MODELS = ["deepseek-v4-pro", "glm-5.2", "hy3"]
-JUDGE_MODEL = "deepseek-v4-pro"
+# 端点与模型都可以用环境变量覆盖（DSH_GW / DSH_KEY / DSH_VOTE_MODELS …）
+BASE = os.environ.get("DSH_GW", "http://127.0.0.1:8787/v1/chat/completions")
+KEY = os.environ.get("DSH_KEY", "local-noop")
+VOTE_MODELS = os.environ.get("DSH_VOTE_MODELS", "deepseek-v4-pro,glm-5.2,hy3,minimax-m3,deepseek-v4-flash").split(",")
+ITEM_MODELS = os.environ.get("DSH_ITEM_MODELS", "deepseek-v4-pro,glm-5.2,hy3").split(",")
+JUDGE_MODEL = os.environ.get("DSH_JUDGE_MODEL", "deepseek-v4-pro")
 LETTERS = "ABCDEFGH"
 USE_SEARCH = True
 
