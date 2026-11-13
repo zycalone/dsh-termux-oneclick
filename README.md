@@ -259,6 +259,7 @@ python ~/dsh-phone/act_batch.py steps.json --dry-run     # 多步动作，先干
 python ~/dsh-phone/quiz.py solve ~/tmp/q.json    # 多模型投票答题
 python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20   # 看视频出笔记
 python ~/dsh-phone/meetnote.py --interval 20                    # 开会记纪要（Ctrl+C 出纪要.md）
+python ~/dsh-phone/meetnote.py --a11y --interval 8               # 只读无障碍树的文字，不截图、不花视觉 token
 bash ~/dsh-phone/fix-adb.sh                      # 拔线/重启后自动找回 adb 通道（端口不写死）
 bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 ```
