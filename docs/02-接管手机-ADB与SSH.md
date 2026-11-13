@@ -68,14 +68,57 @@ ssh -p 18022 -o StrictHostKeyChecking=no <用户名>@127.0.0.1
 
 ---
 
-## 4. 手机重启后修复
+## 4. 拔线 / 重启后连不上？**端口别写死**
 
 ```bash
-bash ~/dsh-phone/fix-adb.sh
+bash ~/dsh-phone/fix-adb.sh           # 自动找回通道（推荐）
+bash ~/dsh-phone/fix-adb.sh status    # 只看现在通不通
+bash ~/dsh-phone/fix-adb.sh ensure    # 静默模式，只输出端口号（appctl 内部用）
 ```
 
-它做的事：`adb kill-server` → `adb start-server` → `adb connect 127.0.0.1:5556` → 自检 `dumpsys`。
-若仍失败：无线调试开关关掉再开，端口可能变了，`adb connect 127.0.0.1:<新端口>`。
+### 为什么"拔了 USB 就连不上"
+
+这是安卓自己的规矩，不是你配置错了：
+
+1. **无线调试会自己关** —— 重启、断 Wi-Fi、换网络、关掉开发者选项，`无线调试` 开关都会回到关闭。
+2. **端口是随机的** —— 每次重新打开无线调试，`adbd` 监听的端口都会换（这次 5556，下次可能 4 万多）。
+   所以网上"写死 5556"的教程在你重启之后必然失效。
+3. **列不出端口** —— Android 9 起普通 App 读不了 `/proc/net/tcp`，`ss` / `netstat` 在 Termux 里
+   全是 `Permission denied`（本项目实测确认），`adb mdns services` 在 Termux 的 adb 上也提示不支持。
+   **所以只能反向探测。**
+
+### fix-adb.sh v2 怎么找端口
+
+| 顺序 | 方法 | 实际耗时 |
+|---|---|---|
+| 1 | 已经在连着的 → 直接记下端口 | 0.1s |
+| 2 | 记住的端口 + 历史端口（`~/.dsh-adb-port`、`~/.dsh-adb-ports`）+ 5555/5556/5557 | **163ms** |
+| 3 | TCP 探测 30000-49999 + 5555-5599 里"真在听"的端口，逐个 `adb connect` | **约 3s** |
+| 4 | 桌面 Linux 上退回读 `/proc/net/tcp`（Android 上读不到，仅兜底） | —— |
+
+第 3 步靠 `scripts/phone/find_adb_port.py`：256 线程并发探测，本地端口拒绝是瞬间的，
+20000 多个端口 2 秒扫完。实测这台机器上"在听"的有 7 个端口，其中只有一个是 adb。
+
+顺手还做两件事：
+- 探测失败的端口会 `adb disconnect` 掉，`adb devices` 不会留一堆 `offline` 残渣（开场也会清一次）。
+- 找到的端口写进历史，下次先试历史，通常 **0.2 秒**就连上，不用再扫。
+
+### 连不上的两种人话结论
+
+```
+-- 没找到可连的 adb 端口 --
+→ 手机上 设置 → 系统 → 开发者选项 → 打开「无线调试」，再跑一次 fix-adb.sh
+→ 顺便把 Wi-Fi 设成「始终保持连接」（有的 ROM 叫「休眠时保持 Wi-Fi」），否则息屏久了又掉
+```
+
+- **`failed to authenticate` / 手机弹「允许 USB 调试」** → 点允许，勾选一律允许
+- **`devices` 里是 `offline`** → 关掉无线调试再开一次（`fix-adb.sh` 现在会自动清这类残渣）
+
+### appctl 已经会自愈
+
+`appctl.sh` 不再写死端口：它先看你上次的端口，连不上就静默调 `fix-adb.sh ensure` 再试，
+所以你直接跑 `appctl.sh text` 就可能自己连回来了（实测：手动 `adb disconnect` 后直接 `appctl.sh cur`，自动重连成功）。
+
 
 ---
 
