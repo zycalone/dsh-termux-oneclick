@@ -88,7 +88,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 | 操作反思循环 | 点了没反应 → 截图问视觉模型为什么 | `smartstep.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 看视频/出笔记也抗挂 | 逐帧识图 + 汇总全走回退链 | `vidnote.py` / `screenwatch.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 章节测验/在线答题（高正确率） | 多模型投票 + 检索兜底 | `quiz.py` | [docs/05](docs/05-满分答题流水线.md) |
-| 看视频出笔记 | 截屏抽帧 + 视觉模型读画面 | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
+| 看视频出笔记 | 截屏抽帧 + 视觉模型读画面；**也可直接给链接**（yt-dlp 下载） | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
 | 开会自动做纪要 | 后台定时截屏·内容不变不读图·退出时归纳 | `meetnote.py` | [docs/13](docs/13-开会自动做纪要.md) |
 | 转写稿→纪要/笔记 | 分段提取再合并，会议要要点、讲座要知识点 | `minutetool.py` | [docs/14](docs/14-转写稿变笔记.md) |
 | 上网查资料 / 写论文 | `web_fetch` 抓 Bing / arXiv / Crossref / PubMed | — | README「联网」 |
@@ -262,6 +262,7 @@ python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20   # 看视频出笔
 python ~/dsh-phone/meetnote.py --interval 20                    # 开会记纪要（Ctrl+C 出纪要.md）
 python ~/dsh-phone/meetnote.py --a11y --interval 8               # 只读无障碍树的文字，不截图、不花视觉 token
 python ~/dsh-phone/minutetool.py 稿子.txt --kind lecture         # 转写稿→学习笔记（--kind meeting 出纪要）
+python ~/dsh-phone/vidnote.py "<视频链接>" --max 12 --kind lecture  # 链接解析→下载→抽帧→笔记
 bash ~/dsh-phone/fix-adb.sh                      # 拔线/重启后自动找回 adb 通道（端口不写死）
 bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 ```
@@ -292,6 +293,7 @@ bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 | 敏感词拦截（支付/验证码等） | ✅ 实测：`确认支付` 被拦、`设置` 放行 |
 | 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
 | vidnote/screenwatch 接回退链 | ✅ 真机实测：抓 2 帧→逐帧识图→汇总出笔记 |
+| vidnote 给链接直接出笔记 | ✅ 真机实测：yt-dlp 下载 59.7MB → 抽 4 帧 → 生成笔记 |
 | meetnote 开会记纪要 | ✅ 真机实测：抓 2 屏→时间线→自动纪要；非会议前台 0 帧 0 token |
 | minutetool 转写稿成稿 | ✅ 真机实测：SRT/txt 两种输入，讲座/会议/auto 三种模式 |
 | 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
