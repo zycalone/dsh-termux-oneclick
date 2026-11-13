@@ -256,7 +256,8 @@ python ~/dsh-phone/act_batch.py steps.json --dry-run     # 多步动作，先干
 
 python ~/dsh-phone/quiz.py solve ~/tmp/q.json    # 多模型投票答题
 python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20   # 看视频出笔记
-bash ~/dsh-phone/fix-adb.sh                      # 手机重启后修 adb
+bash ~/dsh-phone/fix-adb.sh                      # 拔线/重启后自动找回 adb 通道（端口不写死）
+bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 ```
 
 ---
@@ -277,6 +278,7 @@ bash ~/dsh-phone/fix-adb.sh                      # 手机重启后修 adb
 | dsh web 界面 | ✅ 可用 |
 | 视觉识图 | ✅ 可用（需声明 image 的视觉模型） |
 | 手机 App 自动化 | ✅ 可用（读屏依赖 a11y，**微信读不到**） |
+| 拔线后 adb 自愈 | ✅ 实测：探测 3s 找到端口；靠历史端口 163ms 连上 |
 | 点击自愈（`--verify`） | ✅ 实测：界面无变化会重试并最终 `GIVE_UP` |
 | 控件知识库（`kb`） | ✅ 实测：save/list/get 往返正常 |
 | 多步批量（`act_batch.py`） | ✅ 实测：6 步干跑全解析 |
