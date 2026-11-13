@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""meetnote.py —— 开会时后台自己记纪要，散会给你一份 md
+
+为什么这么设计（上一次踩的坑）：
+  上次是「边开会边和 dsh 聊天」，结果每敲一条命令，浏览器就把会议挤到后台，
+  截到的三张全是 dsh 自己的界面；切回会议还得靠 monkey 拉 App，非常麻烦。
+  所以现在反过来：**你只管开会，脚本自己在后台定时截图记笔记，你不用碰手机。**
+
+特点：
+  1. 只在前台确实是会议 App 时才截（前台是别的就跳过，不浪费 token、不打扰你）
+  2. 画面没变化就不读图（md5 相同直接跳过），PPT 不翻页就不花钱
+  3. 退出时自动把整场笔记归纳成「会议纪要.md」
+  4. 模型走 llm.py 的回退链，一个端点挂了自动换下一个
+
+用法：
+  python ~/dsh-phone/meetnote.py                      # 开会前敲这一条，散会回来说"总结"
+  python ~/dsh-phone/meetnote.py --interval 15        # 15 秒看一次（默认 20）
+  python ~/dsh-phone/meetnote.py --pkgs com.tencent.wemeet.app,com.tencent.mm
+  python ~/dsh-phone/meetnote.py --minutes 45         # 45 分钟后自动收工
+  python ~/dsh-phone/meetnote.py --no-summary         # 只要原始时间线，不生成纪要
+  python ~/dsh-phone/meetnote.py --dry-run            # 只打印截到了什么，不调模型
+
+产物：~/tmp/meet/<日期-时间>/时间线.md 和 会议纪要.md（截图默认读完就删，加 --keep-frames 保留）
+"""
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import llm  # noqa: E402
+
+def _adb_serial():
+    ser = os.environ.get("DSH_ADB_SER")
+    if ser:
+        return ser
+    port = os.environ.get("DSH_ADB_PORT")
+    if not port:
+        try:
+            port = open(os.path.expanduser("~/.dsh-adb-port")).read().strip()
+        except Exception:
+            port = "5556"
+    return "127.0.0.1:" + (port or "5556")
+
+
+ADB = ["adb", "-s", _adb_serial()]
+
+FRAME_PROMPT = """这是手机屏幕截图，正在开线上会议。请只提取"画面上真实存在的信息"，不要推测、不要补充常识。
+
+判断共享内容是什么：PPT / 文档 / 白板 / 视频 / 摄像头头像墙 / 没有共享内容。
+
+如果画面里主要是人头像、聊天区、控制栏，几乎没有可读内容，只输出：
+{{"kind":"none"}}
+
+如果共享内容与下面这段"上一次记录"实质相同（比如只是时钟、弹幕、鼠标在动），只输出：
+{{"kind":"same"}}
+
+上一次记录：
+{prev}
+
+否则输出严格 JSON：
+{{"kind":"ppt|doc|whiteboard|video","title":"这页标题","points":["要点1","要点2"],"raw":"画面上的关键原文，看不清就留空"}}
+"""
+
+SUMMARY_PROMPT = """下面是一场线上会议期间，手机每 20 秒自动记录的画面文字时间线（不是完整录音，只包含屏幕上出现过的东西）。
+
+请整理成一份中文会议纪要，Markdown 格式，包含：
+1. **一句话结论**（这场会到底在讲什么）
+2. **按主题分节**：每个主题列要点，合并重复内容
+3. **出现的资料/链接/数字**：原样保留（BV 号、网址、人名、编号）
+4. **待办或后续**：只在原文明确提到时才写，没写就写"未见明确待办"
+
+不要编造时间线里没有的内容。时间线如下：
+
+---
+{timeline}
+---
+"""
+
+
+def run(cmd, binary=False, timeout=60):
+    r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+    return r.stdout if binary else r.stdout.decode("utf-8", "replace")
+
+
+def foreground():
+    out = run(ADB + ["shell", "dumpsys window"], timeout=30)
+    for line in out.splitlines():
+        if "mCurrentFocus" in line:
+            # mCurrentFocus=Window{2917c42 u0 tv.danmaku.bili/com.bilibili.video.X type=1}
+            s = line.split("u0 ", 1)[-1]
+            pkg = s.split("/", 1)[0].strip()
+            if pkg and pkg != "Window{":
+                return pkg
+    return "?"
+
+
+def shot(path):
+    data = run(ADB + ["exec-out", "screencap", "-p"], binary=True, timeout=60)
+    if not data or len(data) < 5000:
+        return None
+    with open(path, "wb") as f:
+        f.write(data)
+    return hashlib.md5(data).hexdigest()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--interval", type=float, default=20)
+    ap.add_argument("--pkgs", default="com.tencent.wemeet.app",
+                    help="允许截图的前台包名，逗号分隔（默认腾讯会议）")
+    ap.add_argument("--minutes", type=float, default=0, help="0 = 一直跑到你 Ctrl+C")
+    ap.add_argument("--max-frames", type=int, default=0)
+    ap.add_argument("--out", default=os.path.expanduser("~/tmp/meet"))
+    ap.add_argument("--no-summary", action="store_true")
+    ap.add_argument("--keep-frames", action="store_true")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--summarize", metavar="目录或时间线.md",
+                    help="不录新的，只把已有时间线重新归纳成会议纪要")
+    args = ap.parse_args()
+
+    if args.summarize:
+        src = args.summarize
+        if os.path.isdir(src):
+            src = os.path.join(src, "时间线.md")
+        body = open(src, encoding="utf-8").read()
+        r = llm.ask(SUMMARY_PROMPT.format(timeline=body), max_tokens=1600, temperature=0.3, trace=False)
+        out = os.path.join(os.path.dirname(os.path.abspath(src)), "会议纪要.md")
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("# 会议纪要\n\n" + r["text"].strip() + "\n")
+        print("会议纪要：%s" % out)
+        return 0
+
+    allow = [p.strip() for p in args.pkgs.split(",") if p.strip()]
+    stamp = time.strftime("%Y%m%d-%H%M")
+    outdir = os.path.join(args.out, stamp)
+    os.makedirs(outdir, exist_ok=True)
+    timeline = os.path.join(outdir, "时间线.md")
+    frame = os.path.join(outdir, "frame.png")
+
+    print("=== meetnote ===")
+    print("只在前台是 %s 时截图；每 %.0f 秒看一次" % ("/".join(allow), args.interval))
+    print("输出目录：%s" % outdir)
+    if not args.dry_run:
+        try:
+            r0 = llm.ask("回复 OK", max_tokens=8, trace=False)
+            print("模型自检：%s/%s" % (r0["endpoint"], r0["model"]))
+        except Exception as e:
+            print("模型连不上，先修网络：%s" % e)
+            return 1
+
+    prev_md5 = None
+    prev_rec = ""
+    pages = 0
+    frames = 0
+    started = time.time()
+    log_lines = []
+
+    def write_timeline():
+        head = "# 会议时间线（%s）\n\n" % stamp
+        with open(timeline, "w", encoding="utf-8") as f:
+            f.write(head + ("\n".join(log_lines) if log_lines else "_（还没有记录到内容）_\n"))
+
+    if os.path.exists(timeline):
+        pass
+    try:
+        while True:
+            now = time.time()
+            if args.minutes and (now - started) / 60.0 >= args.minutes:
+                print("\n到时间了，收工")
+                break
+            if args.max_frames and frames >= args.max_frames:
+                print("\n抓够 %d 帧，收工" % frames)
+                break
+
+            fg = foreground()
+            if fg not in allow:
+                print("\r[跳过] 前台是 %s，不是会议" % fg[:40], end="", flush=True)
+                time.sleep(args.interval)
+                continue
+
+            md5 = shot(frame)
+            if not md5:
+                print("\r[跳过] 截屏失败（adb 掉线？跑 fix-adb.sh）", end="", flush=True)
+                time.sleep(args.interval)
+                continue
+            if md5 == prev_md5:
+                print("\r[等] 画面没变，跳过（已省一次读图）", end="", flush=True)
+                time.sleep(args.interval)
+                continue
+            prev_md5 = md5
+            frames += 1
+            label = time.strftime("%H:%M:%S")
+
+            if args.dry_run:
+                print("\n[%s] 截到一帧（%d KB），前台 %s" % (label, os.path.getsize(frame) // 1024, fg))
+                time.sleep(args.interval)
+                continue
+
+            try:
+                r = llm.ask(FRAME_PROMPT.format(prev=prev_rec or "（无）"), image_path=frame,
+                            max_tokens=700, temperature=0.1, trace=False)
+                txt = (r.get("text") or "").strip()
+            except Exception as e:
+                print("\n[%s] 读图失败：%s" % (label, str(e)[:120]))
+                time.sleep(args.interval)
+                continue
+
+            txt = txt.strip().strip("`").replace("json\n", "")
+            try:
+                obj = json.loads(txt[txt.find("{"):txt.rfind("}") + 1])
+            except Exception:
+                obj = {"kind": "unknown", "raw": txt[:500]}
+
+            kind = obj.get("kind")
+            if kind in ("none", "same"):
+                print("\r[%s] 无新内容（%s）" % (label, kind), end="", flush=True)
+            else:
+                pages += 1
+                title = obj.get("title") or "(无标题)"
+                pts = obj.get("points") or []
+                raw = obj.get("raw") or ""
+                block = ["## [%s] 第 %d 屏 · %s" % (label, pages, title), ""]
+                for p in pts:
+                    block.append("- " + str(p))
+                if raw:
+                    block += ["", "> 原文：`%s`" % raw.replace("\n", " ")]
+                block.append("")
+                log_lines.append("\n".join(block))
+                prev_rec = title + "｜" + "；".join(str(p) for p in pts[:3])
+                write_timeline()
+                print("\r[%s] 记下第 %d 屏：%s" % (label, pages, title[:30]))
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print("\n你按了 Ctrl+C，收工")
+    finally:
+        write_timeline()
+        print("时间线：%s（%d 屏，抓了 %d 帧）" % (timeline, pages, frames))
+        if not args.keep_frames and os.path.exists(frame):
+            os.remove(frame)
+        if pages and not args.no_summary and not args.dry_run:
+            body = "\n".join(log_lines)
+            try:
+                r = llm.ask(SUMMARY_PROMPT.format(timeline=body), max_tokens=1600, temperature=0.3, trace=False)
+                path = os.path.join(outdir, "会议纪要.md")
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write("# 会议纪要（%s）\n\n" % stamp + r["text"].strip() + "\n")
+                print("会议纪要：%s" % path)
+                print("（用 %s/%s 生成）" % (r["endpoint"], r["model"]))
+            except Exception as e:
+                print("纪要生成失败：%s" % str(e)[:150])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
