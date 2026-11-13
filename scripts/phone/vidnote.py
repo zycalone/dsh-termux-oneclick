@@ -6,8 +6,13 @@
       端点与模型走 llm.py 的回退链，一个挂了自动换下一个。
 
 用法：
-  python vidnote.py <视频路径> [--interval 30] [--max 24] [--out 输出.md]
-  python vidnote.py test.mp4 --max 8
+  python vidnote.py <视频路径或链接> [--kind note|lecture|meeting|auto]
+                    [--interval 30] [--max 24] [--out 输出.md]
+  python vidnote.py ~/tmp/课.mp4 --max 8
+  python vidnote.py "https://www.bilibili.com/video/BVxxxx" --kind lecture --max 12
+
+  给链接时先用 yt-dlp 下载（装法：python -m pip install -U yt-dlp），再照常抽帧。
+  --kind lecture/meeting 复用 minutetool.py 的笔记/纪要结构；默认 note 是学习笔记老格式。
 
 输出：
   ~/tmp/vid/frames/          抽出的帧
@@ -30,10 +35,10 @@ VMODEL = os.environ.get("DSH_VISION_MODEL", "glm-5v-turbo")
 TMODEL = os.environ.get("DSH_TEXT_MODEL", "deepseek-v4-pro")
 
 FRAME_PROMPT = (
-    "这是网课视频在 {t} 处的画面截图。请只做两件事：\n"
-    "1) 画面文字：逐字抄写画面里出现的所有文字（PPT 标题/正文/公式/字幕）；没有文字就写 无。\n"
-    "2) 这一屏在讲什么：一句话概括（若只是人脸、空镜、logo，就写 无信息）。\n"
-    "不要联想，不要补充画面外的内容。"
+    "这是视频在 {t} 处的画面截图。请只做两件事：\n"
+    "1) 画面文字：逐字抄写画面里出现的所有文字（标题/正文/公式/字幕/弹幕）；没有文字就写 无。\n"
+    "2) 这一屏在讲什么：一句话概括（若只是人脸、空镜、logo 或纯装饰，就写 无信息）。\n"
+    "不要联想，不要根据标题、推荐栏、搜索词推测视频讲了什么。"
 )
 
 SUMMARY_PROMPT = (
@@ -43,7 +48,9 @@ SUMMARY_PROMPT = (
     "二、关键概念与定义（逐条，术语保留原文）\n"
     "三、可能被考到的点（5-10 条，判断/单选口吻）\n"
     "四、看不懂/信息缺失的地方（若某些时段无文字，指出需要回看的位置）\n"
-    "只依据给定文字，不要编造。"
+    "只依据给定文字，不要编造。\n"
+    "特别注意：如果逐帧文字里主要是界面元素（标题栏、推荐列表、播放数据、进度条），\n"
+    "那说明这个视频没有可用的文字内容，直接说明这一点，不要用标题去推测视频内容。"
 )
 
 
@@ -70,6 +77,34 @@ def vision(img_path, t_label):
         max_tokens=700,
         temperature=0.1,
     )["text"]
+
+
+def download(url, workdir):
+    """给链接就用 yt-dlp 下载（手机端 yt-dlp 在 Termux 的 PATH 里）。"""
+    dl_dir = os.path.join(workdir, "dl")
+    os.makedirs(dl_dir, exist_ok=True)
+    if not shutil.which("yt-dlp"):
+        raise SystemExit("给链接需要 yt-dlp：python -m pip install -U yt-dlp")
+    print("下载中（yt-dlp）：%s" % url, flush=True)
+    cmd = ["yt-dlp", "--no-playlist", "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b",
+           "--merge-output-format", "mp4", "-o", os.path.join(dl_dir, "%(title).60s.%(ext)s"),
+           url]
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    line = ""
+    for l in (p.stdout or "").splitlines():
+        if "[download] " in l and "%" in l:
+            line = l.strip()
+        if "Destination:" in l or "Merging formats into" in l:
+            line = l.strip()
+    if p.returncode != 0:
+        tail = ((p.stderr or "") + (p.stdout or "")).strip().splitlines()[-3:]
+        raise SystemExit("下载失败：%s" % " | ".join(tail))
+    cand = [os.path.join(dl_dir, f) for f in os.listdir(dl_dir) if f.lower().endswith((".mp4", ".mkv", ".webm"))]
+    if not cand:
+        raise SystemExit("下载完成但没找到视频文件")
+    newest = max(cand, key=os.path.getmtime)
+    print("下载完成：%s（%.1f MB）" % (os.path.basename(newest), os.path.getsize(newest) / 1048576), flush=True)
+    return newest
 
 
 def mmss(s):
@@ -114,7 +149,7 @@ def main():
         print(__doc__)
         return
     video = sys.argv[1]
-    interval, max_frames, out = 30, 24, None
+    interval, max_frames, out, kind = 30, 24, None, "note"
     args = sys.argv[2:]
     i = 0
     while i < len(args):
@@ -124,10 +159,16 @@ def main():
             max_frames = int(args[i + 1]); i += 2
         elif args[i] == "--out":
             out = args[i + 1]; i += 2
+        elif args[i] == "--kind":
+            kind = args[i + 1]; i += 2
         else:
             i += 1
-    base = os.path.splitext(os.path.basename(video))[0]
     workdir = os.path.expanduser("~/tmp/vid")
+    if video.startswith(("http://", "https://")):
+        video = download(video, workdir)
+    if not os.path.exists(video):
+        raise SystemExit("找不到视频：%s" % video)
+    base = os.path.splitext(os.path.basename(video))[0]
     outdir = os.path.join(workdir, "frames_" + base)
     frames, times = extract(video, outdir, interval, max_frames)
     print("抽帧 %d 张 → %s" % (len(frames), outdir), flush=True)
@@ -143,14 +184,29 @@ def main():
     joined = "\n\n".join("### %s\n%s" % (t, x) for t, x in rows)
     summary = ""
     try:
-        summary = post({"model": TMODEL, "messages": [
-            {"role": "user", "content": SUMMARY_PROMPT + "\n\n" + joined}],
-            "max_tokens": 2000, "temperature": 0.2}, timeout=300)
+        if kind == "auto":
+            try:
+                import minutetool
+                probe = llm.ask(minutetool.KIND_PROBE.format(sample=joined[:2500]),
+                                max_tokens=120, temperature=0.1, trace=False)["text"]
+                kind = "lecture" if ("讲座" in probe or "lecture" in probe) else "meeting"
+            except Exception:  # noqa: BLE001
+                kind = "lecture"
+            print("自动判断：%s" % kind, flush=True)
+        if kind in ("lecture", "meeting"):
+            import minutetool
+            tpl = minutetool.MERGE_LECTURE if kind == "lecture" else minutetool.MERGE_MEETING
+            summary = llm.ask(tpl.format(body=joined), max_tokens=2200, temperature=0.3, trace=False)["text"]
+        else:
+            summary = post({"model": TMODEL, "messages": [
+                {"role": "user", "content": SUMMARY_PROMPT + "\n\n" + joined}],
+                "max_tokens": 2000, "temperature": 0.2}, timeout=300)
     except Exception as e:  # noqa: BLE001
         summary = "汇总失败: %s" % e
     out = out or os.path.join(workdir, base + "-笔记.md")
     with open(out, "w", encoding="utf-8") as f:
-        f.write("# %s 视频笔记\n\n" % base)
+        _label = {"note": "视频笔记", "lecture": "学习笔记", "meeting": "会议纪要"}.get(kind, "视频笔记")
+        f.write("# %s %s\n\n" % (base, _label))
         f.write(summary + "\n\n---\n\n## 逐屏原文（按时间）\n\n" + joined + "\n")
     print("\n笔记已写入:", out)
 
