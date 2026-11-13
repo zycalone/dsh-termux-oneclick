@@ -8,8 +8,8 @@
 
 说明：
   - 用 adb exec-out screencap 抓屏；相同画面（md5 一样）自动跳过
-  - 每帧交给 glm-5v-turbo 抄画面文字 + 一句话概括
-  - 最后用 deepseek-v4-pro 汇总成本节笔记，存 ~/tmp/vid/屏幕笔记-<时间>.md
+  - 每帧交给视觉模型（endpoints.json 里的 vision_models，带回退链）抄画面文字 + 一句话概括
+  - 最后用文本模型汇总成本节笔记，存 ~/tmp/vid/live-<时间>/笔记.md
 """
 import hashlib
 import os
@@ -20,7 +20,7 @@ import time
 
 sys.path.insert(0, os.path.expanduser("~/dsh-phone"))
 try:
-    from vidnote import post, vision, SUMMARY_PROMPT  # 复用
+    from vidnote import post, vision, SUMMARY_PROMPT, TMODEL  # 复用
 except Exception as e:  # noqa: BLE001
     print("需要 vidnote.py 在 ~/dsh-phone/ 下:", e)
     raise
@@ -104,7 +104,7 @@ def main():
         return
     joined = "\n\n".join("### %s\n%s" % (t, x) for t, x in rows)
     try:
-        summary = post({"model": "deepseek-v4-pro", "messages": [
+        summary = post({"model": TMODEL, "messages": [
             {"role": "user", "content": SUMMARY_PROMPT + "\n\n" + joined}],
             "max_tokens": 2000, "temperature": 0.2}, timeout=300)
     except Exception as e:  # noqa: BLE001
