@@ -137,20 +137,34 @@ bash ~/dsh-phone/appctl.sh apps                # 列出已装第三方 App 包�
   2. 生成 docx/pptx 后告诉用户「用手机 WPS 打开 → 导出为 PDF」。
 - 生成完把文件路径告诉用户，并说明用什么 App 打开。
 
-## 看视频出笔记（重要：先看这里再动手）
+## 视频 / 音频 / 文档 → 笔记（先看这张表再动手）
 
-用户说「帮我看/解析这节课的视频」「看视频做笔记」时，**不要去"听"音频**（没有音视频模型），走截屏抽帧 + 视觉模型：
+用户丢来东西时，先按"给了什么"选命令，不要临场发明流程：
 
-- 边播边看（任何 App 都行，不需要 ffmpeg）：
-  `python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20`
-  产物：`~/tmp/vid/live-<时间>/笔记.md`
-- 有视频文件时（需要 ffmpeg，`pkg install ffmpeg`）：
-  `python ~/dsh-phone/vidnote.py <视频路径> --interval 30 --max 24`
-- 两个脚本都靠网关 `127.0.0.1:8787`；视觉用 `glm-5v-turbo`，汇总用 `deepseek-v4-pro`。
-- 抓屏用 `adb -s 127.0.0.1:5556 exec-out screencap -p`，**只读屏、不点屏幕**。
-- 跑之前确认：视频真的在播、屏幕常亮、别切到别的前台；跑的过程中不要动手机。
-- 停在前台静态页面 → 只会出很少帧，属正常（md5 去重）。
-- PPT/PDF 类的章节任务点，直接抓文本比抽帧准得多，优先走文本。
+| 用户给的东西 | 直接跑 | 产物 |
+|---|---|---|
+| 一个**视频链接**（B站 / YouTube 等） | `python ~/dsh-phone/vidnote.py "<链接>" --max 12 --kind auto` | 画面笔记 |
+| 一个**本地视频文件**（.mp4/.mkv） | `python ~/dsh-phone/vidnote.py <路径> --interval 30 --max 24 --kind auto` | 画面笔记 |
+| 一份**转写稿**（txt/md/srt/vtt/docx/pdf） | `python ~/dsh-phone/minutetool.py <路径> --kind auto` | 会议纪要 / 学习笔记 |
+| 用户说**"我要开会了"** | `python ~/dsh-phone/meetnote.py --pkgs com.tencent.wemeet.app --interval 15 --keep-awake` | 时间线 + 纪要 |
+| **屏幕在放、没有文件** | `python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20` | 边看边记 |
+
+### 硬规则
+
+- **本项目没有音频/语音模型，也不支持音频转写**（网关 `/v1/audio/transcriptions` 返回 404，模型列表里没有 whisper）。
+  所以：不要"听"视频，**不要承诺"把语音转成文字"**。视频一律走画面（抽帧 + 视觉模型）；
+  想要"谁说了什么"，只能请用户提供云录制/转写出来的文字稿，再走 `minutetool.py`。
+- **画面笔记 ≠ 会议纪要**。诚实说明产物只有"屏幕上出现过的字"。
+- 链接下载靠 `yt-dlp`（已装，路径在 Termux PATH 里）。下载失败按报错分诊：
+  - 报错含 `DRM` / `Widevine` → 加密片源，技术上拿不到；建议换公开片源，或让用户给本地 mp4。
+  - 报错含 `v.qq.com` / `iqiyi` / `youku` → 多为会员片源，或给的是整部剧的列表页；要"单集播放页"且免费可看。
+  - 报错含 `playlist` + `0 items` → 给的是列表页，让用户在浏览器点开要解析的那一集再复制链接。
+- `--kind` 选择产物结构：`meeting` 出待办表；`lecture` 出学习笔记（含"可能考点""易错点""没听懂的部分"）；
+  `auto` 先判断类型；不写默认 `note`（老格式学习笔记）。
+- 视觉模型 `glm-5v-turbo`、文本 `deepseek-v4-pro`，都走 `llm.py` 回退链；一个端点挂了会自己换。
+- 产物默认落 `~/tmp/vid/`（视频）和 `~/tmp/notes/`（转写稿）。生成后把**路径 + 用什么 App 打开**一起告诉用户。
+- 跑之前确认：手机有电、**别切前台**（切走会跳过不记）；开会记纪要必须加 `--keep-awake`，否则息屏后截到的是锁屏。
+- PPT / PDF 类章节任务点，直接抓文本比抽帧准得多，优先走文本。
 
 ## 常见坑（别踩）
 
