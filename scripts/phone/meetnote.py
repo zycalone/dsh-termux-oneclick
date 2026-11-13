@@ -6,6 +6,11 @@
   截到的三张全是 dsh 自己的界面；切回会议还得靠 monkey 拉 App，非常麻烦。
   所以现在反过来：**你只管开会，脚本自己在后台定时截图记笔记，你不用碰手机。**
 
+两种读法：
+  --a11y        读「无障碍树」里的文字，不截图、不花视觉 token；树里读不到才退回截图
+  --a11y-only   只读文字树，永不截图（会议 App 把共享内容画在图片里时就没有内容）
+  （默认是截图模式，什么都不加）
+
 特点：
   1. 只在前台确实是会议 App 时才截（前台是别的就跳过，不浪费 token、不打扰你）
   2. 画面没变化就不读图（md5 相同直接跳过），PPT 不翻页就不花钱
@@ -47,6 +52,7 @@ def _adb_serial():
 
 
 ADB = ["adb", "-s", _adb_serial()]
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 FRAME_PROMPT = """这是手机屏幕截图，正在开线上会议。请只提取"画面上真实存在的信息"，不要推测、不要补充常识。
 
@@ -98,6 +104,33 @@ def foreground():
     return "?"
 
 
+def a11y_lines():
+    """读无障碍树里的文字（uiautomator dump → ui_text.py），0 张图、0 视觉 token。"""
+    xml = ""
+    # uiautomator 第一次常常报 "could not get idle state"（页面在动），重试一次就好
+    for attempt in (1, 2):
+        subprocess.run(ADB + ["shell", "uiautomator", "dump", "--compressed", "/data/local/tmp/mn.xml"],
+                       capture_output=True, timeout=40)
+        xml = run(ADB + ["shell", "cat", "/data/local/tmp/mn.xml"], timeout=40)
+        if "<?xml" in xml:
+            break
+        time.sleep(1.0)
+    if "<?xml" not in xml:
+        return []
+    r = subprocess.run([sys.executable, os.path.join(HERE, "ui_text.py"), "--json"],
+                       input=xml.encode("utf-8"), capture_output=True, timeout=60)
+    try:
+        d = json.loads(r.stdout.decode("utf-8", "replace"))
+    except Exception:
+        return []
+    out = []
+    for n in d.get("nodes") or []:
+        t = (n.get("text") or "").strip()
+        if t and t not in out:
+            out.append(t)
+    return out
+
+
 def shot(path):
     data = run(ADB + ["exec-out", "screencap", "-p"], binary=True, timeout=60)
     if not data or len(data) < 5000:
@@ -117,6 +150,10 @@ def main():
     ap.add_argument("--out", default=os.path.expanduser("~/tmp/meet"))
     ap.add_argument("--no-summary", action="store_true")
     ap.add_argument("--keep-frames", action="store_true")
+    ap.add_argument("--a11y", action="store_true",
+                    help="先读无障碍树的文字（不截图、不花视觉 token），读不到才截图")
+    ap.add_argument("--a11y-only", action="store_true",
+                    help="只读文字树，永不截图")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--summarize", metavar="目录或时间线.md",
                     help="不录新的，只把已有时间线重新归纳成会议纪要")
@@ -134,6 +171,12 @@ def main():
         print("会议纪要：%s" % out)
         return 0
 
+    mode = "shot"
+    if args.a11y_only:
+        mode = "a11y-only"
+    elif args.a11y:
+        mode = "a11y"
+
     allow = [p.strip() for p in args.pkgs.split(",") if p.strip()]
     stamp = time.strftime("%Y%m%d-%H%M")
     outdir = os.path.join(args.out, stamp)
@@ -144,7 +187,7 @@ def main():
     print("=== meetnote ===")
     print("只在前台是 %s 时截图；每 %.0f 秒看一次" % ("/".join(allow), args.interval))
     print("输出目录：%s" % outdir)
-    if not args.dry_run:
+    if not args.dry_run and mode != "a11y-only":
         try:
             r0 = llm.ask("回复 OK", max_tokens=8, trace=False)
             print("模型自检：%s/%s" % (r0["endpoint"], r0["model"]))
@@ -154,6 +197,7 @@ def main():
 
     prev_md5 = None
     prev_rec = ""
+    seen_text = set()   # 无障碍树去重：只记新出现的文字
     pages = 0
     frames = 0
     started = time.time()
@@ -182,6 +226,33 @@ def main():
                 time.sleep(args.interval)
                 continue
 
+            label = time.strftime("%H:%M:%S")
+
+            # —— 路线 A：读无障碍树（不截图）——
+            if mode in ("a11y", "a11y-only"):
+                lines = a11y_lines()
+                if lines:
+                    new = [l for l in lines if l not in seen_text]
+                    if new:
+                        pages += 1
+                        seen_text.update(new)
+                        block = ["## [%s] 第 %d 屏 · 界面文字" % (label, pages), ""]
+                        block += ["- " + l for l in new[:40]]
+                        block.append("")
+                        log_lines.append("\n".join(block))
+                        write_timeline()
+                        print("\r[%s] 记下第 %d 屏：%d 条新文字（没花视觉 token）"
+                              % (label, pages, len(new)))
+                    else:
+                        print("\r[%s] 文字没变，跳过" % label, end="", flush=True)
+                    time.sleep(args.interval)
+                    continue
+                # 树是空的（FLAG_SECURE / 纯 SurfaceView）→ 只有 --a11y 才退回截图
+                if mode == "a11y-only":
+                    print("\r[%s] 读不到界面文字（可能被安全策略挡住）" % label, end="", flush=True)
+                    time.sleep(args.interval)
+                    continue
+
             md5 = shot(frame)
             if not md5:
                 print("\r[跳过] 截屏失败（adb 掉线？跑 fix-adb.sh）", end="", flush=True)
@@ -193,7 +264,6 @@ def main():
                 continue
             prev_md5 = md5
             frames += 1
-            label = time.strftime("%H:%M:%S")
 
             if args.dry_run:
                 print("\n[%s] 截到一帧（%d KB），前台 %s" % (label, os.path.getsize(frame) // 1024, fg))
