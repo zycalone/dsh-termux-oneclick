@@ -96,12 +96,25 @@ def download(url, workdir):
             line = l.strip()
         if "Destination:" in l or "Merging formats into" in l:
             line = l.strip()
+    out_all = (p.stderr or "") + (p.stdout or "")
     if p.returncode != 0:
-        tail = ((p.stderr or "") + (p.stdout or "")).strip().splitlines()[-3:]
-        raise SystemExit("下载失败：%s" % " | ".join(tail))
+        tail = out_all.strip().splitlines()[-3:]
+        msg = " | ".join(tail)
+        hint = ""
+        low = (msg + url).lower()
+        if "drm" in low or "widevine" in low:
+            hint = ("\n提示：这个片源是加密的（DRM），yt-dlp 下不了 —— 腾讯/爱奇艺/优酷的会员片源基本都是这样。\n"
+                    "      换免费公开片源，或先在别处下好 mp4 再传进手机用本地视频模式。")
+        elif "v.qq.com" in low or "iqiyi" in low or "youku" in low:
+            hint = ("\n提示：这几个平台的播放页经常要求登录/会员，或者给的是整部剧的列表页。\n"
+                    "      给「单集播放页」链接，且是免费可看的片源；加密片源技术上拿不到。")
+        elif "playlist" in low and "0 items" in low:
+            hint = "\n提示：这是剧集/列表页，不是单集。请在浏览器里点开要解析的那一集，复制那一集的播放页链接。"
+        raise SystemExit("下载失败：%s%s" % (msg, hint))
     cand = [os.path.join(dl_dir, f) for f in os.listdir(dl_dir) if f.lower().endswith((".mp4", ".mkv", ".webm"))]
     if not cand:
-        raise SystemExit("下载完成但没找到视频文件")
+        raise SystemExit("下载完成但没找到视频文件\n"
+                         "提示：如果是剧集/列表页，请给单集播放页链接；加密片源（DRM）拿不到。")
     newest = max(cand, key=os.path.getmtime)
     print("下载完成：%s（%.1f MB）" % (os.path.basename(newest), os.path.getsize(newest) / 1048576), flush=True)
     return newest
