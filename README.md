@@ -85,6 +85,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 | 动作编排与自愈（点得稳） | 可点元素瘦身 + 界面对比重试 + 元素知识库 | `appctl.sh` / `act_batch.py` | [docs/11](docs/11-动作编排与自愈.md) |
 | 多端点回退链（抗挂） | 端点×模型排队试，错一个换下一个 | `llm.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 操作反思循环 | 点了没反应 → 截图问视觉模型为什么 | `smartstep.py` | [docs/12](docs/12-回退链与反思循环.md) |
+| 看视频/出笔记也抗挂 | 逐帧识图 + 汇总全走回退链 | `vidnote.py` / `screenwatch.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 章节测验/在线答题（高正确率） | 多模型投票 + 检索兜底 | `quiz.py` | [docs/05](docs/05-满分答题流水线.md) |
 | 看视频出笔记 | 截屏抽帧 + 视觉模型读画面 | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
 | 上网查资料 / 写论文 | `web_fetch` 抓 Bing / arXiv / Crossref / PubMed | — | README「联网」 |
@@ -281,6 +282,7 @@ bash ~/dsh-phone/fix-adb.sh                      # 手机重启后修 adb
 | 多端点回退链 | ✅ 实测：前两个端点写坏，自动跳到第三个 1591ms |
 | 敏感词拦截（支付/验证码等） | ✅ 实测：`确认支付` 被拦、`设置` 放行 |
 | 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
+| vidnote/screenwatch 接回退链 | ⚠️ 代码已改，真机全流程复测待补（见 docs/12） |
 | 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
 | 音视频理解 | ❌ 无音视频模型，只能抽帧读画面 |
 | docx/pptx → pdf | ❌ 手机无 LibreOffice |
