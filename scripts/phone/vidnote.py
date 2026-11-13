@@ -3,6 +3,7 @@
 
 流程：ffmpeg 抽帧（按画面变化抽，PPT 型课效率最高）→ 逐帧视觉模型抄画面文字
       → 文本模型汇总成章节笔记。不依赖云端音视频能力，只靠"看图"。
+      端点与模型走 llm.py 的回退链，一个挂了自动换下一个。
 
 用法：
   python vidnote.py <视频路径> [--interval 30] [--max 24] [--out 输出.md]
@@ -12,19 +13,21 @@
   ~/tmp/vid/frames/          抽出的帧
   ~/tmp/vid/<视频名>-笔记.md   逐帧文字 + 汇总笔记
 """
-import base64
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import urllib.request
 
-GW = "http://127.0.0.1:8787/v1/chat/completions"
-KEY = "local-noop"
-VMODEL = "glm-5v-turbo"
-TMODEL = "deepseek-v4-pro"
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import llm  # 多端点回退链，见 docs/12
+
+# 仅作为提示；真正的端点/模型配置在 ~/dsh-phone/endpoints.json
+GW = os.environ.get("DSH_GW", "http://127.0.0.1:8787/v1/chat/completions")
+KEY = os.environ.get("DSH_KEY", "local-noop")
+VMODEL = os.environ.get("DSH_VISION_MODEL", "glm-5v-turbo")
+TMODEL = os.environ.get("DSH_TEXT_MODEL", "deepseek-v4-pro")
 
 FRAME_PROMPT = (
     "这是网课视频在 {t} 处的画面截图。请只做两件事：\n"
@@ -45,21 +48,28 @@ SUMMARY_PROMPT = (
 
 
 def post(payload, timeout=180):
-    body = json.dumps(payload).encode()
-    req = urllib.request.Request(GW, data=body, headers={
-        "Content-Type": "application/json", "Authorization": "Bearer " + KEY})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        d = json.loads(r.read().decode("utf-8", "replace"))
-    return (d["choices"][0]["message"].get("content") or "").strip()
+    """兼容旧签名：吃 {model, messages, max_tokens, temperature}，内部走回退链。
+
+    指定模型全挂时会放开模型限制再试一遍（端点还活着但模型下线的情况）。
+    """
+    r = llm.chat(
+        payload["messages"],
+        model=payload.get("model"),
+        max_tokens=int(payload.get("max_tokens", 800)),
+        temperature=float(payload.get("temperature", 0.2)),
+        fallback_any_model=True,
+    )
+    return r["text"]
 
 
 def vision(img_path, t_label):
-    with open(img_path, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    return post({"model": VMODEL, "messages": [{"role": "user", "content": [
-        {"type": "text", "text": FRAME_PROMPT.format(t=t_label)},
-        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
-    ]}], "max_tokens": 700, "temperature": 0.1})
+    """逐帧读画面：走视觉模型回退链（记不住的话会说 ERROR，但不会整段崩）。"""
+    return llm.ask(
+        FRAME_PROMPT.format(t=t_label),
+        image_path=img_path,
+        max_tokens=700,
+        temperature=0.1,
+    )["text"]
 
 
 def mmss(s):
