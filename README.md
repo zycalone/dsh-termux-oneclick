@@ -4,7 +4,7 @@
 ![platform](https://img.shields.io/badge/Android-Termux%20%C2%B7%20%E5%85%8D%20root-3fb950)
 ![node](https://img.shields.io/badge/Node-%E2%89%A520-339933)
 ![python](https://img.shields.io/badge/Python-%E2%89%A53.10-3776ab)
-![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-12%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
+![docs](https://img.shields.io/badge/%E6%96%87%E6%A1%A3-13%20%E7%AF%87%E4%B8%AD%E6%96%87-0969da)
 ![status](https://img.shields.io/badge/%E5%AE%9E%E6%B5%8B-%E7%9C%9F%E6%9C%BA%E8%B7%91%E9%80%9A-8250df)
 
 **一句话**：把一台安卓手机变成能自己干活的 AI —— 不用 root、不用电脑常开、电脑关机照样用。
@@ -12,7 +12,7 @@
 把 dsh（DeepSeek Harness）原封不动装进 Termux，再让它通过**本机 adb 自己控制自己**：
 读屏幕、按文字点按钮、截图复核、抽帧看视频。
 
-本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：50 个文件、3700+ 行、12 篇中文文档。
+本仓库是一套**在一台真实手机上跑通**的配置 + 脚本 + 踩坑记录：60 个文件、4300+ 行、13 篇中文文档。
 
 > ⚠️ 本仓库**不含任何模型代理/逆向实现**。你需要自备一个 OpenAI 兼容的 `/v1/chat/completions` 端点
 > （本机 `127.0.0.1:8787`、局域网、或任何云端兼容服务都行），填进配置即可。
@@ -25,7 +25,8 @@
 
 - [真实运行输出](#真实运行输出实测节选) · [能力一览](#能力一览) · [硬性前提](#硬性前提) · [目录结构](#目录结构)
 - [快速开始（5 步）](#快速开始5-步) · [模型接入](#模型接入自备端点) · [手机自我接管](#手机自我接管不需要电脑)
-- [动作编排与自愈](docs/11-动作编排与自愈.md) · [回退链与反思](docs/12-回退链与反思循环.md) · [常用命令速查](#常用命令速查)
+- [动作编排与自愈](docs/11-动作编排与自愈.md) · [回退链与反思](docs/12-回退链与反思循环.md) · [开会做纪要](docs/13-开会自动做纪要.md)
+- [常用命令速查](#常用命令速查)
 - [实测状态](#实测状态诚实清单) · [相关项目](#相关项目本项目不是首创) · [安全与免责](#安全与免责)
 
 > 想发动态/分享？[`docs/images/share-card.png`](docs/images/share-card.png) 是配好版式的宣传图，
@@ -88,6 +89,7 @@ mCurrentFocus=Window{b80c70 u0 tv.danmaku.bili/...StoryTransparentActivity type=
 | 看视频/出笔记也抗挂 | 逐帧识图 + 汇总全走回退链 | `vidnote.py` / `screenwatch.py` | [docs/12](docs/12-回退链与反思循环.md) |
 | 章节测验/在线答题（高正确率） | 多模型投票 + 检索兜底 | `quiz.py` | [docs/05](docs/05-满分答题流水线.md) |
 | 看视频出笔记 | 截屏抽帧 + 视觉模型读画面 | `screenwatch.py` / `vidnote.py` | [docs/06](docs/06-看视频出笔记.md) |
+| 开会自动做纪要 | 后台定时截屏·内容不变不读图·退出时归纳 | `meetnote.py` | [docs/13](docs/13-开会自动做纪要.md) |
 | 上网查资料 / 写论文 | `web_fetch` 抓 Bing / arXiv / Crossref / PubMed | — | README「联网」 |
 | 生成文档 | python-pptx / python-docx / openpyxl / reportlab | — | README「文档」 |
 | 手机自我接管（ADB/SSH） | adb tcpip + sshd | `fix-adb.sh` | [docs/02](docs/02-接管手机-ADB与SSH.md) |
@@ -256,6 +258,7 @@ python ~/dsh-phone/act_batch.py steps.json --dry-run     # 多步动作，先干
 
 python ~/dsh-phone/quiz.py solve ~/tmp/q.json    # 多模型投票答题
 python ~/dsh-phone/screenwatch.py --minutes 15 --interval 20   # 看视频出笔记
+python ~/dsh-phone/meetnote.py --interval 20                    # 开会记纪要（Ctrl+C 出纪要.md）
 bash ~/dsh-phone/fix-adb.sh                      # 拔线/重启后自动找回 adb 通道（端口不写死）
 bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 ```
@@ -286,6 +289,7 @@ bash ~/dsh-phone/fix-adb.sh status               # 只看现在通不通
 | 敏感词拦截（支付/验证码等） | ✅ 实测：`确认支付` 被拦、`设置` 放行 |
 | 操作反思循环 | ✅ 实测：干跑能读屏并给出 done/动作计划 |
 | vidnote/screenwatch 接回退链 | ✅ 真机实测：抓 2 帧→逐帧识图→汇总出笔记 |
+| meetnote 开会记纪要 | ✅ 真机实测：抓 2 屏→时间线→自动纪要；非会议前台 0 帧 0 token |
 | 视觉模型缺失时的反思 | ❌ 无视觉模型则反思不可用（会报错跳过） |
 | 音视频理解 | ❌ 无音视频模型，只能抽帧读画面 |
 | docx/pptx → pdf | ❌ 手机无 LibreOffice |
