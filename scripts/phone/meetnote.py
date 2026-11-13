@@ -31,6 +31,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -104,6 +105,30 @@ def foreground():
     return "?"
 
 
+# 这些是"会议 App 的按钮/提示"，不是会议内容 —— 靠它们判断"树里有字"会误判
+UI_CHROME = (
+    "静音", "解除静音", "取消静音", "麦克风", "扬声器", "摄像头", "开启视频", "关闭视频", "切换摄像头",
+    "共享屏幕", "共享", "停止共享", "成员", "管理成员", "全体静音", "聊天", "更多", "设置", "美颜",
+    "虚拟背景", "举手", "表情", "录制", "会议号", "邀请", "复制", "最小化", "挂断", "离开会议",
+    "结束会议", "返回", "确定", "取消", "网络", "信号", "电量", "加入会议", "会议详情", "会议中",
+    "主持人", "联席主持人", "布局", "全屏", "画中画", "语音模式", "视频模式", "文档", "白板",
+)
+
+
+def contentish(lines):
+    """树里的字里，有多少条像"真内容"（讲义、文档正文、聊天），而不是按钮。"""
+    n = 0
+    for raw in lines:
+        t = (raw or "").strip()
+        if len(t) < 4:
+            continue
+        if any(c in t for c in UI_CHROME) and len(t) <= 8:
+            continue        # 纯按钮文字
+        if re.search(r"[\u4e00-\u9fff]{6,}", t) or len(t) >= 12:
+            n += 1
+    return n
+
+
 def a11y_lines():
     """读无障碍树里的文字（uiautomator dump → ui_text.py），0 张图、0 视觉 token。"""
     xml = ""
@@ -154,6 +179,8 @@ def main():
                     help="先读无障碍树的文字（不截图、不花视觉 token），读不到才截图")
     ap.add_argument("--a11y-only", action="store_true",
                     help="只读文字树，永不截图")
+    ap.add_argument("--keep-awake", action="store_true",
+                    help="开会期间让屏幕保持常亮（截图抓的是当前屏幕，锁屏就什么都抓不到）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--summarize", metavar="目录或时间线.md",
                     help="不录新的，只把已有时间线重新归纳成会议纪要")
@@ -195,6 +222,10 @@ def main():
             print("模型连不上，先修网络：%s" % e)
             return 1
 
+    if args.keep_awake:
+        subprocess.run(ADB + ["shell", "svc", "power", "stayon", "true"], capture_output=True, timeout=30)
+        print("已开启屏幕常亮（结束时自动恢复）")
+
     prev_md5 = None
     prev_rec = ""
     seen_text = set()   # 无障碍树去重：只记新出现的文字
@@ -231,7 +262,8 @@ def main():
             # —— 路线 A：读无障碍树（不截图）——
             if mode in ("a11y", "a11y-only"):
                 lines = a11y_lines()
-                if lines:
+                strong = contentish(lines) >= 2   # 至少两条像正文，才算"树里有内容"
+                if lines and strong:
                     new = [l for l in lines if l not in seen_text]
                     if new:
                         pages += 1
@@ -247,9 +279,10 @@ def main():
                         print("\r[%s] 文字没变，跳过" % label, end="", flush=True)
                     time.sleep(args.interval)
                     continue
-                # 树是空的（FLAG_SECURE / 纯 SurfaceView）→ 只有 --a11y 才退回截图
+                # 树里只有按钮文字（共享的是图片/PPT），或是空树 → --a11y 退回截图
                 if mode == "a11y-only":
-                    print("\r[%s] 读不到界面文字（可能被安全策略挡住）" % label, end="", flush=True)
+                    why = "只有按钮文字" if lines else "读不到界面文字（可能被安全策略挡住）"
+                    print("\r[%s] %s" % (label, why), end="", flush=True)
                     time.sleep(args.interval)
                     continue
 
@@ -307,6 +340,8 @@ def main():
     except KeyboardInterrupt:
         print("\n你按了 Ctrl+C，收工")
     finally:
+        if args.keep_awake:
+            subprocess.run(ADB + ["shell", "svc", "power", "stayon", "false"], capture_output=True, timeout=30)
         write_timeline()
         print("时间线：%s（%d 屏，抓了 %d 帧）" % (timeline, pages, frames))
         if not args.keep_frames and os.path.exists(frame):
